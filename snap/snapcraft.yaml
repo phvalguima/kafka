@@ -1,0 +1,84 @@
+name: kafka
+version: '2.8'
+summary: Apache kafka cluster in a snap
+description: |
+  Provides the kafka queue system in a snap. Create kafka
+  cluster or standalone; or a cluster of Kafka Connect.
+
+  Set the log dirs in: /var/snap/kafka/common/ (SNAP_COMMON)
+
+  Add the kafka.properties file to configure this unit in:
+  /var/snap/kafka/common/kafka.properties
+
+  Other config files:
+  Configure Kafka Connect unit:
+  /var/snap/kafka/common/connect-distributed.properties
+
+  Configure Mirror Maker unit (EXPERIMENTAL):
+  /var/snap/kafka/common/mirror-maker.properties
+
+  Truststore and Keystores should also be placed in SNAP_COMMON.
+
+
+confinement: strict
+grade: stable
+base: core18
+architectures: [amd64]
+assumes: [snapd2.51]
+
+parts:
+  kafka:
+    # It defaults to gradlew
+    plugin: gradle
+    source: https://github.com/phvalguima/kafka
+    source-tag: 2.8.0-rc2
+    source-type: git
+    gradle-options:
+      [-xtest]
+    override-build: |
+      apt update
+      # Needed for gradlew
+      apt install -y curl
+      snapcraftctl build
+    override-prime: |
+      snapcraftctl prime
+      find /root/parts/kafka/src/bin/ -name '*.sh' -exec cp -r "{}" ${SNAPCRAFT_PRIME}/bin/ \;
+      # Copying jars
+      cp /root/parts/kafka/build/examples/build/libs/kafka-examples-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
+      cp /root/parts/kafka/build/core/build/libs/kafka_2.13-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
+      cp /root/parts/kafka/build/connect/mirror/build/libs/connect-mirror-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
+      cp /root/parts/kafka/build/clients/build/libs/kafka-clients-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
+      cp /root/parts/kafka/build/tools/build/libs/kafka-tools-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
+      cp /root/parts/kafka/build/connect/build/libs/connect-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
+      cp /root/parts/kafka/build/connect/runtime/build/libs/connect-runtime-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
+      cp /root/parts/kafka/build/connect/mirror-client/build/libs/connect-mirror-client-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
+      cp /root/parts/kafka/build/connect/api/build/libs/connect-api-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
+      cp /root/parts/kafka/build/connect/json/build/libs/connect-json-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
+      cp /root/parts/kafka/build/connect/file/build/libs/connect-file-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
+      cp /root/parts/kafka/build/connect/transforms/build/libs/connect-transforms-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
+      cp /root/parts/kafka/build/generator/build/libs/generator-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
+      cp /root/parts/kafka/build/shell/build/libs/kafka-shell-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
+      cp /root/parts/kafka/build/log4j-appender/build/libs/kafka-log4j-appender-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
+      cp /root/parts/kafka/build/metadata/build/libs/kafka-metadata-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
+apps:
+  kafka:
+    command: bin/kafka-run-class.sh kafka.Kafka ${SNAP_COMMON}/kafka.properties
+    daemon: simple
+    restart-condition: never
+    plugs:
+      - network-bind
+      - network
+  kafka-connect:
+    command: bin/connect-distributed.sh ${SNAP_COMMON}/connect-distributed.properties
+    daemon: simple
+    restart-condition: never
+    plugs:
+      - network-bind
+      - network
+  kafka-mirror-maker:
+    command: bin/connect-mirror-maker.sh ${SNAP_COMMON}/mirror-maker.properties
+    daemon: simple
+    restart-condition: never
+    plugs:
+      - network-bind
+      - network
