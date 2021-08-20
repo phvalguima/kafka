@@ -24,7 +24,7 @@ confinement: strict
 grade: stable
 base: core18
 architectures: [amd64]
-assumes: [snapd2.51]
+assumes: [snapd2.49]
 
 parts:
   kafka:
@@ -35,14 +35,16 @@ parts:
     source-type: git
     gradle-options:
       [-xtest]
-    override-build: |
-      apt update
-      # Needed for gradlew
-      apt install -y curl
-      snapcraftctl build
+    build-packages:
+      - wget
+      - curl    
+#    stage-packages:
+#      - openjdk-11-jre-headless
     override-prime: |
       snapcraftctl prime
       find /root/parts/kafka/src/bin/ -name '*.sh' -exec cp -r "{}" ${SNAPCRAFT_PRIME}/bin/ \;
+      # Download prometheus exporter jar
+      wget -qO ${SNAPCRAFT_PRIME}/jar/jmx_prometheus_javaagent.jar https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/0.15.0/jmx_prometheus_javaagent-0.15.0.jar
       # Copying jars
       cp /root/parts/kafka/build/examples/build/libs/kafka-examples-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
       cp /root/parts/kafka/build/core/build/libs/kafka_2.13-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
@@ -61,6 +63,11 @@ parts:
       cp /root/parts/kafka/build/log4j-appender/build/libs/kafka-log4j-appender-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
       cp /root/parts/kafka/build/metadata/build/libs/kafka-metadata-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
 apps:
+#  keytool:
+#    command: usr/lib/jvm/java-11-openjdk-amd64/bin/keytool
+#    plugs:
+#      - network-bind
+#      - network
   kafka:
     command: bin/kafka-run-class.sh kafka.Kafka ${SNAP_COMMON}/kafka.properties
     daemon: simple
@@ -68,17 +75,20 @@ apps:
     plugs:
       - network-bind
       - network
-  kafka-connect:
-    command: bin/connect-distributed.sh ${SNAP_COMMON}/connect-distributed.properties
-    daemon: simple
-    restart-condition: never
-    plugs:
-      - network-bind
-      - network
-  kafka-mirror-maker:
-    command: bin/connect-mirror-maker.sh ${SNAP_COMMON}/mirror-maker.properties
-    daemon: simple
-    restart-condition: never
-    plugs:
-      - network-bind
-      - network
+# Prepare one snap that enables connect-distributed instead, and one for mirror-maker
+# That way we can have different binaries for such services.
+# TODO: in case the user wants to have broker + connect all-in-one, expose connect-standalone instead
+#  kafka-connect:
+#    command: bin/connect-distributed.sh ${SNAP_COMMON}/connect-distributed.properties
+#    daemon: simple
+#    restart-condition: never
+#    plugs:
+#      - network-bind
+#      - network
+#  kafka-mirror-maker:
+#    command: bin/connect-mirror-maker.sh ${SNAP_COMMON}/mirror-maker.properties
+#    daemon: simple
+#    restart-condition: never
+#    plugs:
+#      - network-bind
+#      - network
