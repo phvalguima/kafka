@@ -24,6 +24,7 @@ confinement: strict
 grade: stable
 base: core18
 architectures: [amd64]
+# For core18
 assumes: [snapd2.49]
 
 parts:
@@ -40,28 +41,24 @@ parts:
       - curl    
 #    stage-packages:
 #      - openjdk-11-jre-headless
+    override-build: |
+      snapcraftctl build
+      # Pack all the jar files into a single tarball to be unpacked at prime step
+      find . -name '*.jar' -exec tar -zcvf /tmp/file.tar.gz {} +
     override-prime: |
       snapcraftctl prime
-      find /root/parts/kafka/src/bin/ -name '*.sh' -exec cp -r "{}" ${SNAPCRAFT_PRIME}/bin/ \;
+      mkdir -p ${SNAPCRAFT_PRIME}/bin/scripts
+      find /root/parts/kafka/src/bin/ -name '*.sh' -exec cp -r "{}" ${SNAPCRAFT_PRIME}/bin/scripts/ \;
       # Download prometheus exporter jar
       wget -qO ${SNAPCRAFT_PRIME}/jar/jmx_prometheus_javaagent.jar https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/0.15.0/jmx_prometheus_javaagent-0.15.0.jar
-      # Copying jars
-      cp /root/parts/kafka/build/examples/build/libs/kafka-examples-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
-      cp /root/parts/kafka/build/core/build/libs/kafka_2.13-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
-      cp /root/parts/kafka/build/connect/mirror/build/libs/connect-mirror-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
-      cp /root/parts/kafka/build/clients/build/libs/kafka-clients-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
-      cp /root/parts/kafka/build/tools/build/libs/kafka-tools-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
-      cp /root/parts/kafka/build/connect/build/libs/connect-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
-      cp /root/parts/kafka/build/connect/runtime/build/libs/connect-runtime-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
-      cp /root/parts/kafka/build/connect/mirror-client/build/libs/connect-mirror-client-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
-      cp /root/parts/kafka/build/connect/api/build/libs/connect-api-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
-      cp /root/parts/kafka/build/connect/json/build/libs/connect-json-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
-      cp /root/parts/kafka/build/connect/file/build/libs/connect-file-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
-      cp /root/parts/kafka/build/connect/transforms/build/libs/connect-transforms-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
-      cp /root/parts/kafka/build/generator/build/libs/generator-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
-      cp /root/parts/kafka/build/shell/build/libs/kafka-shell-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
-      cp /root/parts/kafka/build/log4j-appender/build/libs/kafka-log4j-appender-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
-      cp /root/parts/kafka/build/metadata/build/libs/kafka-metadata-2.8.0.jar ${SNAPCRAFT_PRIME}/jar/
+      # Copy the tgz containing all jars needed
+      # kafka-run-class.sh uses the base_dir as:
+      #     base_dir=$(dirname $0)/..
+      # JAR files should placed on the parent folder
+      # IMPORTANT: update the tgz name for new upgrade versions
+      tar -zxvf /tmp/file.tar.gz -C ${SNAPCRAFT_PRIME}/bin/
+      # place the gradle.properties as well on the same folder:
+      cp /root/parts/kafka/build/gradle.properties ${SNAPCRAFT_PRIME}/bin/
 apps:
 #  keytool:
 #    command: usr/lib/jvm/java-11-openjdk-amd64/bin/keytool
@@ -69,26 +66,23 @@ apps:
 #      - network-bind
 #      - network
   kafka:
-    command: bin/kafka-run-class.sh kafka.Kafka ${SNAP_COMMON}/kafka.properties
+    command: bin/scripts/kafka-run-class.sh kafka.Kafka ${SNAP_COMMON}/server.properties
     daemon: simple
     restart-condition: never
     plugs:
       - network-bind
       - network
-# Prepare one snap that enables connect-distributed instead, and one for mirror-maker
-# That way we can have different binaries for such services.
-# TODO: in case the user wants to have broker + connect all-in-one, expose connect-standalone instead
-#  kafka-connect:
-#    command: bin/connect-distributed.sh ${SNAP_COMMON}/connect-distributed.properties
-#    daemon: simple
-#    restart-condition: never
-#    plugs:
-#      - network-bind
-#      - network
-#  kafka-mirror-maker:
-#    command: bin/connect-mirror-maker.sh ${SNAP_COMMON}/mirror-maker.properties
-#    daemon: simple
-#    restart-condition: never
-#    plugs:
-#      - network-bind
-#      - network
+  kafka-connect:
+    command: bin/scripts/connect-distributed.sh ${SNAP_COMMON}/connect-distributed.properties
+    daemon: simple
+    restart-condition: never
+    plugs:
+      - network-bind
+      - network
+  kafka-mirror-maker:
+    command: bin/scripts/connect-mirror-maker.sh ${SNAP_COMMON}/mirror-maker.properties
+    daemon: simple
+    restart-condition: never
+    plugs:
+      - network-bind
+      - network
