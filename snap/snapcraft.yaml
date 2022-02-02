@@ -1,0 +1,81 @@
+name: kafka
+version: '2.8'
+summary: Apache kafka cluster in a snap
+description: |
+  Provides the kafka queue system in a snap. Create kafka
+  cluster or standalone; or a cluster of Kafka Connect.
+
+  Set the log dirs in: /var/snap/kafka/common/ (SNAP_COMMON)
+
+  Add the kafka.properties file to configure this unit in:
+  /var/snap/kafka/common/kafka.properties
+
+  Other config files:
+  Configure Kafka Connect unit:
+  /var/snap/kafka/common/connect-distributed.properties
+
+  Configure Mirror Maker unit (EXPERIMENTAL):
+  /var/snap/kafka/common/mirror-maker.properties
+
+  Truststore and Keystores should also be placed in SNAP_COMMON.
+
+
+confinement: strict
+grade: stable
+base: core18
+architectures: [amd64]
+# For core18
+assumes: [snapd2.49]
+
+parts:
+  kafka:
+    # It defaults to gradlew
+    plugin: gradle
+    source: https://github.com/phvalguima/kafka
+    source-branch: '2.8'
+    source-type: git
+    gradle-options:
+      [-xtest]
+    build-packages:
+      - wget
+      - curl    
+    override-build: |
+      snapcraftctl build
+      # Pack all the jar files into a single tarball to be unpacked at prime step
+      find . -name '*.jar' -exec tar -zcvf /tmp/file.tar.gz {} +
+    override-prime: |
+      snapcraftctl prime
+      mkdir -p ${SNAPCRAFT_PRIME}/bin/scripts
+      find /root/parts/kafka/src/bin/ -name '*.sh' -exec cp -r "{}" ${SNAPCRAFT_PRIME}/bin/scripts/ \;
+      # Download prometheus exporter jar
+      wget -qO ${SNAPCRAFT_PRIME}/jar/jmx_prometheus_javaagent.jar https://repo1.maven.org/maven2/io/prometheus/jmx/jmx_prometheus_javaagent/0.15.0/jmx_prometheus_javaagent-0.15.0.jar
+      # Copy the tgz containing all jars needed
+      # kafka-run-class.sh uses the base_dir as:
+      #     base_dir=$(dirname $0)/..
+      # JAR files should placed on the parent folder
+      # IMPORTANT: update the tgz name for new upgrade versions
+      tar -zxvf /tmp/file.tar.gz -C ${SNAPCRAFT_PRIME}/bin/
+      # place the gradle.properties as well on the same folder:
+      cp /root/parts/kafka/build/gradle.properties ${SNAPCRAFT_PRIME}/bin/
+apps:
+  kafka:
+    command: bin/scripts/kafka-run-class.sh kafka.Kafka ${SNAP_COMMON}/server.properties
+    daemon: simple
+    restart-condition: never
+    plugs:
+      - network-bind
+      - network
+  kafka-connect:
+    command: bin/scripts/connect-distributed.sh ${SNAP_COMMON}/connect-distributed.properties
+    daemon: simple
+    restart-condition: never
+    plugs:
+      - network-bind
+      - network
+  kafka-mirror-maker:
+    command: bin/scripts/connect-mirror-maker.sh ${SNAP_COMMON}/mirror-maker.properties
+    daemon: simple
+    restart-condition: never
+    plugs:
+      - network-bind
+      - network
